@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Amicus MCP — Authorization</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #f8fafe;
+      color: #1a1a2e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 48px;
+      max-width: 560px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .logo {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 24px;
+    }
+    .logo span { color: #2563eb; }
+    .status {
+      font-size: 15px;
+      color: #374151;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid #e5e7eb;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .success { color: #059669; font-weight: 600; }
+    .error { color: #dc2626; }
+    .code-box {
+      background: #f3f4f6;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 16px;
+      text-align: left;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 13px;
+      word-break: break-all;
+      line-height: 1.5;
+    }
+    .code-box label {
+      display: block;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-weight: 600;
+      font-size: 12px;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .code-box + .code-box { margin-top: 12px; }
+    .btn {
+      display: inline-block;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 20px;
+      text-decoration: none;
+    }
+    .btn:hover { background: #1d4ed8; }
+    .manual-note {
+      font-size: 13px;
+      color: #9ca3af;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Amicus <span>MCP</span></div>
+    <div id="content">
+      <div class="spinner"></div>
+      <p class="status">Completing authorization...</p>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      const realmId = params.get('realmId');
+      const state = params.get('state');
+      const error = params.get('error');
+      const content = document.getElementById('content');
+
+      // If Intuit returned an error
+      if (error) {
+        content.innerHTML =
+          '<p class="status error">Authorization failed: ' + error + '</p>' +
+          '<p class="status">Please try again from your terminal.</p>';
+        return;
+      }
+
+      // If no code received
+      if (!code) {
+        content.innerHTML =
+          '<p class="status error">No authorization code received.</p>' +
+          '<p class="status">Please try the authorization flow again.</p>';
+        return;
+      }
+
+      // Build the localhost redirect URL
+      var localUrl = 'http://localhost:3000/callback?code=' + encodeURIComponent(code);
+      if (realmId) localUrl += '&realmId=' + encodeURIComponent(realmId);
+      if (state) localUrl += '&state=' + encodeURIComponent(state);
+
+      // Try to redirect to localhost automatically
+      content.innerHTML =
+        '<div class="spinner"></div>' +
+        '<p class="status">Redirecting to local auth server...</p>';
+
+      // Attempt auto-redirect
+      var redirected = false;
+      var img = new Image();
+      img.onload = function() {
+        // localhost is reachable
+        redirected = true;
+        window.location.href = localUrl;
+      };
+      img.onerror = function() {
+        // Can't reach localhost via img, but try redirect anyway
+        // and also show manual fallback
+        if (!redirected) {
+          redirected = true;
+          // Try the redirect
+          window.location.href = localUrl;
+          // After a short delay, show manual option in case redirect fails
+          setTimeout(showManual, 2000);
+        }
+      };
+      // Ping localhost to see if auth server is running
+      img.src = 'http://localhost:3000/ping?' + Date.now();
+
+      // Fallback: just try redirect after 500ms
+      setTimeout(function() {
+        if (!redirected) {
+          redirected = true;
+          window.location.href = localUrl;
+          setTimeout(showManual, 2000);
+        }
+      }, 500);
+
+      function showManual() {
+        // Only show if we're still on this page (redirect didn't work)
+        content.innerHTML =
+          '<p class="status success">Authorization successful!</p>' +
+          '<p class="status">If the redirect didn\'t work automatically, ' +
+          'copy these values into your terminal:</p>' +
+          '<div class="code-box"><label>Authorization Code</label>' + escapeHtml(code) + '</div>' +
+          (realmId ? '<div class="code-box"><label>Realm ID (Company)</label>' + escapeHtml(realmId) + '</div>' : '') +
+          (state ? '<div class="code-box"><label>State</label>' + escapeHtml(state) + '</div>' : '') +
+          '<a class="btn" href="' + localUrl + '">Click to Complete Locally</a>' +
+          '<p class="manual-note">Make sure auth-server.js is running on localhost:3000</p>';
+      }
+
+      function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
+    })();
+  </script>
+</body>
+</html>
